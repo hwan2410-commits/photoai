@@ -5,7 +5,6 @@ export async function POST(req: Request) {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'placeholder')
   try {
     const { imageBase64, mimeType, purpose } = await req.json()
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
     const purposeMap: Record<string, string> = {
       product: '제품사진',
@@ -15,9 +14,15 @@ export async function POST(req: Request) {
       landscape: '풍경 사진',
     }
 
-    const result = await model.generateContent([
-      { inlineData: { data: imageBase64, mimeType } },
-      `이 사진을 분석하고 최적의 보정 수치를 JSON으로만 반환해주세요. 설명 없이 JSON만 출력하세요.
+    const models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro']
+    let text = ''
+
+    for (const modelName of models) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName })
+        const result = await model.generateContent([
+          { inlineData: { data: imageBase64, mimeType } },
+          `이 사진을 분석하고 최적의 보정 수치를 JSON으로만 반환해주세요. 설명 없이 JSON만 출력하세요.
 촬영 목적: ${purposeMap[purpose] || purpose}
 
 {
@@ -33,9 +38,17 @@ export async function POST(req: Request) {
     "color": "색감 분석 한 문장"
   }
 }`
-    ])
+        ])
+        text = result.response.text()
+        break
+      } catch (e) {
+        console.error(`Model ${modelName} failed:`, e)
+        continue
+      }
+    }
 
-    const text = result.response.text()
+    if (!text) throw new Error('All models failed')
+
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('No JSON in response')
 
