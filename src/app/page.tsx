@@ -1,6 +1,6 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import ManualSliders from '@/components/ManualSliders'
@@ -65,6 +65,18 @@ export default function HomePage() {
     setEditedDataUrl(result)
   }, [])
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  async function handleSliderChange(corr: Corrections) {
+    setCorrections(corr)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      applyAndPreview(corr, originalDataUrl)
+    }, 150)
+  }
+
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
+
   async function handleAnalyze() {
     if (!imageBase64) return
     setStep('analyzing')
@@ -105,10 +117,6 @@ export default function HomePage() {
     }
   }
 
-  async function handleSliderChange(corr: Corrections) {
-    setCorrections(corr)
-    await applyAndPreview(corr, originalDataUrl)
-  }
 
   async function handleSave() {
     if (!feedback || !analysis) return
