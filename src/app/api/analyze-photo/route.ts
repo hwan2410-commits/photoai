@@ -18,42 +18,52 @@ export async function POST(req: Request) {
       landscape: '풍경 사진',
     }
 
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.2-11b-vision-preview',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: { url: `data:${mimeType};base64,${imageBase64}` },
-            },
-            {
-              type: 'text',
-              text: `이 사진을 분석하고 최적의 보정 수치를 JSON으로만 반환해주세요. 설명 없이 JSON만 출력하세요.
-촬영 목적: ${purposeMap[purpose] || purpose}
+    const prompt = `촬영 목적: ${purposeMap[purpose] || purpose}
 
-반드시 아래 형식의 JSON만 출력하세요:
+이 사진을 분석하고 아래 JSON 형식으로만 답해주세요. 다른 설명은 하지 마세요.
+
 {
-  "brightness": -50에서 50 사이 정수,
-  "contrast": -50에서 50 사이 정수,
-  "saturation": -50에서 50 사이 정수,
-  "warmth": -50에서 50 사이 정수,
-  "sharpness": 0에서 100 사이 정수,
+  "brightness": (정수, -50~50),
+  "contrast": (정수, -50~50),
+  "saturation": (정수, -50~50),
+  "warmth": (정수, -50~50),
+  "sharpness": (정수, 0~100),
   "analysis": {
-    "composition": "구도 분석 한 문장 (한국어)",
-    "lighting": "조명 분석 한 문장 (한국어)",
-    "background": "배경 분석 한 문장 (한국어)",
-    "color": "색감 분석 한 문장 (한국어)"
+    "composition": "구도 설명",
+    "lighting": "조명 설명",
+    "background": "배경 설명",
+    "color": "색감 설명"
   }
-}`,
+}`
+
+    const visionModels = ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
+    let text = ''
+
+    for (const model of visionModels) {
+      try {
+        const completion = await groq.chat.completions.create({
+          model,
+          max_tokens: 1024,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+                { type: 'text', text: prompt },
+              ],
             },
           ],
-        },
-      ],
-    })
+        })
+        text = completion.choices[0].message.content || ''
+        if (text) break
+      } catch (e) {
+        console.error(`Model ${model} failed:`, e)
+        continue
+      }
+    }
 
-    const text = completion.choices[0].message.content || ''
+    if (!text) throw new Error('All vision models failed')
+
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('No JSON in response')
 

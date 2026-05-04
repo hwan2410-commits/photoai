@@ -229,7 +229,7 @@ export default function HomePage() {
 
             <ComparisonSlider before={originalDataUrl} after={editedDataUrl} />
 
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <h3 className="text-lg font-bold text-gray-900 mb-4">수동 조정</h3>
               <ManualSliders corrections={corrections} onChange={handleSliderChange} />
             </div>
