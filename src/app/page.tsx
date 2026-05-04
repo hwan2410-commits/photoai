@@ -286,7 +286,7 @@ export default function HomePage() {
                 <div>
                   <p className="text-sm font-semibold text-green-700 mb-2">잘된 점</p>
                   <ul className="space-y-1">
-                    {feedback.good_points.map((p, i) => (
+                    {(feedback.good_points || []).map((p, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
                         <span className="text-green-500 mt-0.5">✓</span>{p}
                       </li>
@@ -294,11 +294,11 @@ export default function HomePage() {
                   </ul>
                 </div>
 
-                {feedback.improvements.length > 0 && (
+                {(feedback.improvements || []).length > 0 && (
                   <div>
                     <p className="text-sm font-semibold text-orange-700 mb-2">개선할 점</p>
                     <div className="space-y-3">
-                      {feedback.improvements.map((imp, i) => (
+                      {(feedback.improvements || []).map((imp, i) => (
                         <div key={i} className="bg-orange-50 rounded-xl p-3">
                           <p className="font-medium text-sm text-orange-800">{imp.title}</p>
                           <p className="text-xs text-gray-600 mt-1">{imp.problem}</p>
@@ -316,7 +316,7 @@ export default function HomePage() {
               </div>
             )}
 
-            {analysis && (
+            {analysis?.analysis && (
               <div className="bg-white rounded-2xl p-6 shadow-sm">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">사진 분석</h3>
                 <div className="grid grid-cols-2 gap-3">
@@ -328,7 +328,7 @@ export default function HomePage() {
                   ].map(({ label, value }) => (
                     <div key={label} className="bg-gray-50 rounded-xl p-3">
                       <p className="text-xs font-semibold text-gray-500 mb-1">{label}</p>
-                      <p className="text-sm text-gray-800">{value}</p>
+                      <p className="text-sm text-gray-800">{value || '-'}</p>
                     </div>
                   ))}
                 </div>
