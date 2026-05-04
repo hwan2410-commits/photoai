@@ -17,7 +17,8 @@ export function applyCorrections(canvas: HTMLCanvasElement, src: string, correct
     img.onload = () => {
       canvas.width = img.naturalWidth
       canvas.height = img.naturalHeight
-      const ctx = canvas.getContext('2d')!
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { resolve(src); return }
       ctx.drawImage(img, 0, 0)
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)

@@ -41,18 +41,33 @@ export default function HomePage() {
       const dataUrl = ev.target?.result as string
       const img = new Image()
       img.onload = () => {
-        const MAX = 1920
-        let { naturalWidth: w, naturalHeight: h } = img
-        if (w > MAX || h > MAX) {
-          if (w > h) { h = Math.round(h * MAX / w); w = MAX }
-          else { w = Math.round(w * MAX / h); h = MAX }
+        try {
+          const MAX = 1200
+          let { naturalWidth: w, naturalHeight: h } = img
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h * MAX / w); w = MAX }
+            else { w = Math.round(w * MAX / h); h = MAX }
+          }
+          const c = document.createElement('canvas')
+          c.width = w; c.height = h
+          const ctx = c.getContext('2d')
+          if (!ctx) {
+            setOriginalDataUrl(dataUrl)
+            setImageBase64(dataUrl.split(',')[1])
+            return
+          }
+          ctx.drawImage(img, 0, 0, w, h)
+          const resized = c.toDataURL('image/jpeg', 0.85)
+          setOriginalDataUrl(resized)
+          setImageBase64(resized.split(',')[1])
+        } catch {
+          setOriginalDataUrl(dataUrl)
+          setImageBase64(dataUrl.split(',')[1])
         }
-        const c = document.createElement('canvas')
-        c.width = w; c.height = h
-        c.getContext('2d')!.drawImage(img, 0, 0, w, h)
-        const resized = c.toDataURL('image/jpeg', 0.85)
-        setOriginalDataUrl(resized)
-        setImageBase64(resized.split(',')[1])
+      }
+      img.onerror = () => {
+        setOriginalDataUrl(dataUrl)
+        setImageBase64(dataUrl.split(',')[1])
       }
       img.src = dataUrl
     }
@@ -61,8 +76,12 @@ export default function HomePage() {
 
   const applyAndPreview = useCallback(async (corr: Corrections, src: string) => {
     if (!canvasRef.current || !src) return
-    const result = await applyCorrections(canvasRef.current, src, corr)
-    setEditedDataUrl(result)
+    try {
+      const result = await applyCorrections(canvasRef.current, src, corr)
+      setEditedDataUrl(result)
+    } catch {
+      setEditedDataUrl(src)
+    }
   }, [])
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
