@@ -229,6 +229,11 @@ export default function HomePage() {
 
             <ComparisonSlider before={originalDataUrl} after={editedDataUrl} />
 
+            <div className="bg-white rounded-2xl p-6 shadow-sm">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">수동 조정</h3>
+              <ManualSliders corrections={corrections} onChange={handleSliderChange} />
+            </div>
+
             {feedback && (
               <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between">
@@ -288,11 +293,6 @@ export default function HomePage() {
                 </div>
               </div>
             )}
-
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">수동 조정</h3>
-              <ManualSliders corrections={corrections} onChange={handleSliderChange} />
-            </div>
 
             <div className="flex gap-3">
               <button
