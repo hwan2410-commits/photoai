@@ -1,12 +1,7 @@
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
-function stripNonKorean(obj: unknown): unknown {
-  if (typeof obj === 'string') return obj.replace(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u2E80-\u2EFF]/g, '')
-  if (Array.isArray(obj)) return obj.map(stripNonKorean)
-  if (obj && typeof obj === 'object') return Object.fromEntries(Object.entries(obj as Record<string, unknown>).map(([k, v]) => [k, stripNonKorean(v)]))
-  return obj
-}
+const HANJA_REGEX = /[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u2E80-\u2EFF]/
 
 const groq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY || 'placeholder',
@@ -21,6 +16,23 @@ const purposeMap: Record<string, string> = {
   landscape: '풍경 사진',
 }
 
+async function fixHanja(text: string): Promise<string> {
+  const completion = await groq.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [
+      {
+        role: 'system',
+        content: '당신은 한국어 교정 전문가입니다. 입력된 텍스트에서 한자(漢字)나 중국어 글자를 찾아 문맥에 맞는 자연스러운 한글로 바꿔주세요. 예: 單→단순한, 美→아름다운, 色→색상. 텍스트 구조는 절대 변경하지 말고 한자만 교체하세요.',
+      },
+      {
+        role: 'user',
+        content: `다음 텍스트에서 한자만 한글로 교체해주세요. 다른 내용은 절대 변경하지 마세요:\n\n${text}`,
+      },
+    ],
+  })
+  return completion.choices[0].message.content || text
+}
+
 async function analyzeWithVision(imageBase64: string, mimeType: string, purpose: string) {
   const models = ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
   for (const model of models) {
@@ -32,11 +44,12 @@ async function analyzeWithVision(imageBase64: string, mimeType: string, purpose:
           role: 'user',
           content: [
             { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
-            { type: 'text', text: `촬영 목적: ${purposeMap[purpose] || purpose}\n\n반드시 순수한 한국어로만 작성하세요. 한자, 영어 단어를 절대 사용하지 마세요.\n\n다음 JSON만 반환:\n{"brightness":정수,"contrast":정수,"saturation":정수,"warmth":정수,"sharpness":정수,"analysis":{"composition":"순수 한국어 한문장","lighting":"순수 한국어 한문장","background":"순수 한국어 한문장","color":"순수 한국어 한문장"}}` },
+            { type: 'text', text: `촬영 목적: ${purposeMap[purpose] || purpose}\n\n반드시 순수한 한국어(한글)로만 작성하세요. 한자(漢字)나 중국어 글자(예: 單, 美, 色 등)를 절대 사용하지 마세요.\n\n다음 JSON만 반환:\n{"brightness":정수,"contrast":정수,"saturation":정수,"warmth":정수,"sharpness":정수,"analysis":{"composition":"순수 한국어 한문장","lighting":"순수 한국어 한문장","background":"순수 한국어 한문장","color":"순수 한국어 한문장"}}` },
           ],
         }],
       })
-      const text = completion.choices[0].message.content || ''
+      let text = completion.choices[0].message.content || ''
+      if (HANJA_REGEX.test(text)) text = await fixHanja(text)
       const match = text.match(/\{[\s\S]*\}/)
       if (match) return JSON.parse(match[0])
     } catch (e) {
@@ -53,10 +66,11 @@ async function analyzeWithText(purpose: string) {
       response_format: { type: 'json_object' },
       messages: [{
         role: 'user',
-        content: `${purposeMap[purpose] || purpose} 촬영을 위한 일반적인 보정 수치와 사진 분석을 JSON으로 반환해주세요. 반드시 순수한 한국어로만 작성하세요. 한자, 영어 단어를 절대 사용하지 마세요.\n{"brightness":정수(-50~50),"contrast":정수(-50~50),"saturation":정수(-50~50),"warmth":정수(-50~50),"sharpness":정수(0~100),"analysis":{"composition":"순수 한국어 설명","lighting":"순수 한국어 설명","background":"순수 한국어 설명","color":"순수 한국어 설명"}}`,
+        content: `${purposeMap[purpose] || purpose} 촬영을 위한 일반적인 보정 수치와 사진 분석을 JSON으로 반환해주세요. 반드시 순수한 한국어(한글)로만 작성하세요. 한자(漢字)나 중국어 글자(예: 單, 美, 色 등)를 절대 사용하지 마세요.\n{"brightness":정수(-50~50),"contrast":정수(-50~50),"saturation":정수(-50~50),"warmth":정수(-50~50),"sharpness":정수(0~100),"analysis":{"composition":"순수 한국어 설명","lighting":"순수 한국어 설명","background":"순수 한국어 설명","color":"순수 한국어 설명"}}`,
       }],
     })
-    const text = completion.choices[0].message.content || ''
+    let text = completion.choices[0].message.content || ''
+    if (HANJA_REGEX.test(text)) text = await fixHanja(text)
     const match = text.match(/\{[\s\S]*\}/)
     if (match) return JSON.parse(match[0])
   } catch (e) {
@@ -82,7 +96,7 @@ export async function POST(req: Request) {
       analysis: (raw?.analysis && typeof raw.analysis === 'object') ? { ...defaultAnalysis, ...raw.analysis } : defaultAnalysis,
     }
 
-    return NextResponse.json(stripNonKorean(result))
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Analysis error:', error)
     return NextResponse.json({ brightness: 10, contrast: 5, saturation: 10, warmth: 5, sharpness: 30, analysis: { composition: '중앙 구도로 피사체를 배치했습니다', lighting: '자연광이 활용된 사진입니다', background: '배경이 깔끔하게 처리되었습니다', color: '자연스러운 색감의 사진입니다' } })
