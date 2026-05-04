@@ -62,16 +62,22 @@ export async function POST(req: Request) {
   try {
     const { imageBase64, mimeType, purpose } = await req.json()
 
-    const result = await analyzeWithVision(imageBase64, mimeType, purpose)
+    const defaultAnalysis = { composition: '중앙 구도로 피사체를 배치했습니다', lighting: '자연광이 활용된 사진입니다', background: '배경이 깔끔하게 처리되었습니다', color: '자연스러운 색감의 사진입니다' }
+    const fallback = { brightness: 10, contrast: 5, saturation: 10, warmth: 5, sharpness: 30, analysis: defaultAnalysis }
+
+    const raw = await analyzeWithVision(imageBase64, mimeType, purpose)
       ?? await analyzeWithText(purpose)
-      ?? { brightness: 10, contrast: 5, saturation: 10, warmth: 5, sharpness: 30, analysis: { composition: '중앙 구도로 피사체를 배치했습니다', lighting: '자연광이 활용된 사진입니다', background: '배경이 깔끔하게 처리되었습니다', color: '자연스러운 색감의 사진입니다' } }
+      ?? fallback
+
+    const result = {
+      ...fallback,
+      ...raw,
+      analysis: (raw?.analysis && typeof raw.analysis === 'object') ? { ...defaultAnalysis, ...raw.analysis } : defaultAnalysis,
+    }
 
     return NextResponse.json(result)
   } catch (error) {
     console.error('Analysis error:', error)
-    return NextResponse.json({
-      brightness: 10, contrast: 5, saturation: 10, warmth: 5, sharpness: 30,
-      analysis: { composition: '중앙 구도로 피사체를 배치했습니다', lighting: '자연광이 활용된 사진입니다', background: '배경이 깔끔하게 처리되었습니다', color: '자연스러운 색감의 사진입니다' }
-    })
+    return NextResponse.json({ brightness: 10, contrast: 5, saturation: 10, warmth: 5, sharpness: 30, analysis: { composition: '중앙 구도로 피사체를 배치했습니다', lighting: '자연광이 활용된 사진입니다', background: '배경이 깔끔하게 처리되었습니다', color: '자연스러운 색감의 사진입니다' } })
   }
 }
