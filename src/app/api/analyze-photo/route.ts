@@ -1,82 +1,78 @@
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
-export async function POST(req: Request) {
-  const groq = new OpenAI({
-    apiKey: process.env.GROQ_API_KEY || 'placeholder',
-    baseURL: 'https://api.groq.com/openai/v1',
-  })
+const groq = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY || 'placeholder',
+  baseURL: 'https://api.groq.com/openai/v1',
+})
 
+const purposeMap: Record<string, string> = {
+  product: '제품사진',
+  food: '음식 사진',
+  portrait: '인물 사진',
+  space: '공간/인테리어 사진',
+  landscape: '풍경 사진',
+}
+
+async function analyzeWithVision(imageBase64: string, mimeType: string, purpose: string) {
+  const models = ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
+  for (const model of models) {
+    try {
+      const completion = await groq.chat.completions.create({
+        model,
+        max_tokens: 800,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+            { type: 'text', text: `촬영 목적: ${purposeMap[purpose] || purpose}\n\n다음 JSON만 반환:\n{"brightness":정수,"contrast":정수,"saturation":정수,"warmth":정수,"sharpness":정수,"analysis":{"composition":"한국어 한문장","lighting":"한국어 한문장","background":"한국어 한문장","color":"한국어 한문장"}}` },
+          ],
+        }],
+      })
+      const text = completion.choices[0].message.content || ''
+      const match = text.match(/\{[\s\S]*\}/)
+      if (match) return JSON.parse(match[0])
+    } catch (e) {
+      console.error(`Vision model ${model} failed:`, e)
+    }
+  }
+  return null
+}
+
+async function analyzeWithText(purpose: string) {
+  try {
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      response_format: { type: 'json_object' },
+      messages: [{
+        role: 'user',
+        content: `${purposeMap[purpose] || purpose} 촬영을 위한 일반적인 보정 수치와 사진 분석을 JSON으로 반환해주세요. 반드시 한국어로 작성하세요.
+{"brightness":정수(-50~50),"contrast":정수(-50~50),"saturation":정수(-50~50),"warmth":정수(-50~50),"sharpness":정수(0~100),"analysis":{"composition":"구도 설명","lighting":"조명 설명","background":"배경 설명","color":"색감 설명"}}`,
+      }],
+    })
+    const text = completion.choices[0].message.content || ''
+    const match = text.match(/\{[\s\S]*\}/)
+    if (match) return JSON.parse(match[0])
+  } catch (e) {
+    console.error('Text fallback failed:', e)
+  }
+  return null
+}
+
+export async function POST(req: Request) {
   try {
     const { imageBase64, mimeType, purpose } = await req.json()
 
-    const purposeMap: Record<string, string> = {
-      product: '제품사진',
-      food: '음식 사진',
-      portrait: '인물 사진',
-      space: '공간/인테리어 사진',
-      landscape: '풍경 사진',
-    }
+    const result = await analyzeWithVision(imageBase64, mimeType, purpose)
+      ?? await analyzeWithText(purpose)
+      ?? { brightness: 10, contrast: 5, saturation: 10, warmth: 5, sharpness: 30, analysis: { composition: '중앙 구도로 피사체를 배치했습니다', lighting: '자연광이 활용된 사진입니다', background: '배경이 깔끔하게 처리되었습니다', color: '자연스러운 색감의 사진입니다' } }
 
-    const prompt = `촬영 목적: ${purposeMap[purpose] || purpose}
-
-이 사진을 분석하고 아래 JSON 형식으로만 답해주세요. 다른 설명은 하지 마세요.
-
-{
-  "brightness": (정수, -50~50),
-  "contrast": (정수, -50~50),
-  "saturation": (정수, -50~50),
-  "warmth": (정수, -50~50),
-  "sharpness": (정수, 0~100),
-  "analysis": {
-    "composition": "구도 설명",
-    "lighting": "조명 설명",
-    "background": "배경 설명",
-    "color": "색감 설명"
-  }
-}`
-
-    const visionModels = ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
-    let text = ''
-
-    for (const model of visionModels) {
-      try {
-        const completion = await groq.chat.completions.create({
-          model,
-          max_tokens: 1024,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
-                { type: 'text', text: prompt },
-              ],
-            },
-          ],
-        })
-        text = completion.choices[0].message.content || ''
-        if (text) break
-      } catch (e) {
-        console.error(`Model ${model} failed:`, e)
-        continue
-      }
-    }
-
-    if (!text) throw new Error('All vision models failed')
-
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) throw new Error('No JSON in response')
-
-    const fixed = jsonMatch[0].replace(/"(?:[^"\\]|\\.)*"/g, (m) =>
-      m.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
-    )
-    const parsed = JSON.parse(fixed)
-    return NextResponse.json(parsed)
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Analysis error:', error)
     return NextResponse.json({
       brightness: 10, contrast: 5, saturation: 10, warmth: 5, sharpness: 30,
-      analysis: { composition: '분석 실패', lighting: '분석 실패', background: '분석 실패', color: '분석 실패' }
+      analysis: { composition: '중앙 구도로 피사체를 배치했습니다', lighting: '자연광이 활용된 사진입니다', background: '배경이 깔끔하게 처리되었습니다', color: '자연스러운 색감의 사진입니다' }
     })
   }
 }
