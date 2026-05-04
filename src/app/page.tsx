@@ -35,12 +35,26 @@ export default function HomePage() {
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setMimeType(file.type || 'image/jpeg')
+    setMimeType('image/jpeg')
     const reader = new FileReader()
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string
-      setOriginalDataUrl(dataUrl)
-      setImageBase64(dataUrl.split(',')[1])
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 1920
+        let { naturalWidth: w, naturalHeight: h } = img
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX }
+          else { w = Math.round(w * MAX / h); h = MAX }
+        }
+        const c = document.createElement('canvas')
+        c.width = w; c.height = h
+        c.getContext('2d')!.drawImage(img, 0, 0, w, h)
+        const resized = c.toDataURL('image/jpeg', 0.85)
+        setOriginalDataUrl(resized)
+        setImageBase64(resized.split(',')[1])
+      }
+      img.src = dataUrl
     }
     reader.readAsDataURL(file)
   }
