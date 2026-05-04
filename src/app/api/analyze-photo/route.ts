@@ -1,8 +1,12 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
 export async function POST(req: Request) {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'placeholder')
+  const groq = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY || 'placeholder',
+    baseURL: 'https://api.groq.com/openai/v1',
+  })
+
   try {
     const { imageBase64, mimeType, purpose } = await req.json()
 
@@ -14,17 +18,23 @@ export async function POST(req: Request) {
       landscape: '풍경 사진',
     }
 
-    const models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro']
-    let text = ''
-
-    for (const modelName of models) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName })
-        const result = await model.generateContent([
-          { inlineData: { data: imageBase64, mimeType } },
-          `이 사진을 분석하고 최적의 보정 수치를 JSON으로만 반환해주세요. 설명 없이 JSON만 출력하세요.
+    const completion = await groq.chat.completions.create({
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:${mimeType};base64,${imageBase64}` },
+            },
+            {
+              type: 'text',
+              text: `이 사진을 분석하고 최적의 보정 수치를 JSON으로만 반환해주세요. 설명 없이 JSON만 출력하세요.
 촬영 목적: ${purposeMap[purpose] || purpose}
 
+반드시 아래 형식의 JSON만 출력하세요:
 {
   "brightness": -50에서 50 사이 정수,
   "contrast": -50에서 50 사이 정수,
@@ -32,23 +42,19 @@ export async function POST(req: Request) {
   "warmth": -50에서 50 사이 정수,
   "sharpness": 0에서 100 사이 정수,
   "analysis": {
-    "composition": "구도 분석 한 문장",
-    "lighting": "조명 분석 한 문장",
-    "background": "배경 분석 한 문장",
-    "color": "색감 분석 한 문장"
+    "composition": "구도 분석 한 문장 (한국어)",
+    "lighting": "조명 분석 한 문장 (한국어)",
+    "background": "배경 분석 한 문장 (한국어)",
+    "color": "색감 분석 한 문장 (한국어)"
   }
-}`
-        ])
-        text = result.response.text()
-        break
-      } catch (e) {
-        console.error(`Model ${modelName} failed:`, e)
-        continue
-      }
-    }
+}`,
+            },
+          ],
+        },
+      ],
+    })
 
-    if (!text) throw new Error('All models failed')
-
+    const text = completion.choices[0].message.content || ''
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('No JSON in response')
 
@@ -58,7 +64,7 @@ export async function POST(req: Request) {
     const parsed = JSON.parse(fixed)
     return NextResponse.json(parsed)
   } catch (error) {
-    console.error('Gemini error:', error)
+    console.error('Analysis error:', error)
     return NextResponse.json({
       brightness: 10, contrast: 5, saturation: 10, warmth: 5, sharpness: 30,
       analysis: { composition: '분석 실패', lighting: '분석 실패', background: '분석 실패', color: '분석 실패' }
