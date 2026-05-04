@@ -13,7 +13,6 @@ export function clamp(value: number): number {
 export function applyCorrections(canvas: HTMLCanvasElement, src: string, corrections: Corrections): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image()
-    img.crossOrigin = 'anonymous'
     img.onload = () => {
       canvas.width = img.naturalWidth
       canvas.height = img.naturalHeight
