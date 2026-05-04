@@ -44,14 +44,24 @@ async function analyzeWithVision(imageBase64: string, mimeType: string, purpose:
           role: 'user',
           content: [
             { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
-            { type: 'text', text: `촬영 목적: ${purposeMap[purpose] || purpose}\n\n반드시 순수한 한국어(한글)로만 작성하세요. 한자(漢字)나 중국어 글자(예: 單, 美, 色 등)를 절대 사용하지 마세요.\n\n다음 JSON만 반환:\n{"brightness":정수,"contrast":정수,"saturation":정수,"warmth":정수,"sharpness":정수,"analysis":{"composition":"순수 한국어 한문장","lighting":"순수 한국어 한문장","background":"순수 한국어 한문장","color":"순수 한국어 한문장"}}` },
+            { type: 'text', text: `촬영 목적: ${purposeMap[purpose] || purpose}\n\n이 사진을 실제로 보고, 보이는 것만 설명하세요. 절대 가정하거나 상상하지 마세요.\n\n특히:\n- 배경의 실제 색상과 질감을 정확히 설명하세요 (예: 흰색 벽, 나무 테이블, 잔디, 콘크리트 등)\n- 조명의 방향과 광원을 실제로 보이는 대로 설명하세요\n- 색감은 사진에 실제로 보이는 색을 설명하세요\n\n반드시 순수한 한국어(한글)로만 작성하세요. 한자 절대 금지.\n\n다음 JSON만 반환:\n{"brightness":정수(-50~50),"contrast":정수(-50~50),"saturation":정수(-50~50),"warmth":정수(-50~50),"sharpness":정수(0~100),"analysis":{"composition":"실제로 보이는 구도 한 문장","lighting":"실제로 보이는 조명 한 문장","background":"실제로 보이는 배경 색상과 질감 한 문장","color":"실제로 보이는 색감 한 문장"}}` },
           ],
         }],
       })
-      let text = completion.choices[0].message.content || ''
-      if (HANJA_REGEX.test(text)) text = await fixHanja(text)
+      const text = completion.choices[0].message.content || ''
       const match = text.match(/\{[\s\S]*\}/)
-      if (match) return JSON.parse(match[0])
+      if (!match) continue
+      const parsed = JSON.parse(match[0])
+      // 한자가 있으면 analysis 텍스트만 개별 교체
+      if (HANJA_REGEX.test(text) && parsed.analysis) {
+        for (const key of Object.keys(parsed.analysis)) {
+          if (HANJA_REGEX.test(parsed.analysis[key])) {
+            const fixed = await fixHanja(parsed.analysis[key])
+            parsed.analysis[key] = fixed.trim()
+          }
+        }
+      }
+      return parsed
     } catch (e) {
       console.error(`Vision model ${model} failed:`, e)
     }

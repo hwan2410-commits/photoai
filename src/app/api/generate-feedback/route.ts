@@ -8,6 +8,25 @@ function hasHanja(obj: unknown): boolean {
   return HANJA_REGEX.test(str)
 }
 
+async function fixParsedHanja(groq: OpenAI, obj: Record<string, unknown>): Promise<void> {
+  for (const key of Object.keys(obj)) {
+    const val = obj[key]
+    if (typeof val === 'string' && HANJA_REGEX.test(val)) {
+      obj[key] = (await fixHanja(groq, val)).trim()
+    } else if (Array.isArray(val)) {
+      for (let i = 0; i < val.length; i++) {
+        if (typeof val[i] === 'string' && HANJA_REGEX.test(val[i])) {
+          val[i] = (await fixHanja(groq, val[i])).trim()
+        } else if (val[i] && typeof val[i] === 'object') {
+          await fixParsedHanja(groq, val[i] as Record<string, unknown>)
+        }
+      }
+    } else if (val && typeof val === 'object') {
+      await fixParsedHanja(groq, val as Record<string, unknown>)
+    }
+  }
+}
+
 async function fixHanja(groq: OpenAI, text: string): Promise<string> {
   const completion = await groq.chat.completions.create({
     model: 'llama-3.3-70b-versatile',
@@ -77,28 +96,18 @@ AI 분석:
       ],
     })
 
-    let text = completion.choices[0].message.content || ''
-
-    // 한자가 있으면 LLM으로 한글 교체 후 재파싱
-    if (HANJA_REGEX.test(text)) {
-      text = await fixHanja(groq, text)
-    }
-
+    const text = completion.choices[0].message.content || ''
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('No JSON in response')
 
-    const fixed = jsonMatch[0].replace(/"(?:[^"\\]|\\.)*"/g, (m) =>
+    const sanitized = jsonMatch[0].replace(/"(?:[^"\\]|\\.)*"/g, (m) =>
       m.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
     )
-    const parsed = JSON.parse(fixed)
+    const parsed = JSON.parse(sanitized)
 
-    // 교체 후에도 한자가 남아있으면 한 번 더 처리
+    // 한자가 있으면 문자열 필드만 개별 교체
     if (hasHanja(parsed)) {
-      const retryText = await fixHanja(groq, JSON.stringify(parsed))
-      const retryMatch = retryText.match(/\{[\s\S]*\}/)
-      if (retryMatch) {
-        try { return NextResponse.json(JSON.parse(retryMatch[0])) } catch { /* fallthrough */ }
-      }
+      await fixParsedHanja(groq, parsed)
     }
 
     return NextResponse.json(parsed)
