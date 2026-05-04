@@ -25,7 +25,7 @@ async function analyzeWithVision(imageBase64: string, mimeType: string, purpose:
           role: 'user',
           content: [
             { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
-            { type: 'text', text: `촬영 목적: ${purposeMap[purpose] || purpose}\n\n다음 JSON만 반환:\n{"brightness":정수,"contrast":정수,"saturation":정수,"warmth":정수,"sharpness":정수,"analysis":{"composition":"한국어 한문장","lighting":"한국어 한문장","background":"한국어 한문장","color":"한국어 한문장"}}` },
+            { type: 'text', text: `촬영 목적: ${purposeMap[purpose] || purpose}\n\n반드시 순수한 한국어로만 작성하세요. 한자, 영어 단어를 절대 사용하지 마세요.\n\n다음 JSON만 반환:\n{"brightness":정수,"contrast":정수,"saturation":정수,"warmth":정수,"sharpness":정수,"analysis":{"composition":"순수 한국어 한문장","lighting":"순수 한국어 한문장","background":"순수 한국어 한문장","color":"순수 한국어 한문장"}}` },
           ],
         }],
       })
@@ -46,8 +46,7 @@ async function analyzeWithText(purpose: string) {
       response_format: { type: 'json_object' },
       messages: [{
         role: 'user',
-        content: `${purposeMap[purpose] || purpose} 촬영을 위한 일반적인 보정 수치와 사진 분석을 JSON으로 반환해주세요. 반드시 한국어로 작성하세요.
-{"brightness":정수(-50~50),"contrast":정수(-50~50),"saturation":정수(-50~50),"warmth":정수(-50~50),"sharpness":정수(0~100),"analysis":{"composition":"구도 설명","lighting":"조명 설명","background":"배경 설명","color":"색감 설명"}}`,
+        content: `${purposeMap[purpose] || purpose} 촬영을 위한 일반적인 보정 수치와 사진 분석을 JSON으로 반환해주세요. 반드시 순수한 한국어로만 작성하세요. 한자, 영어 단어를 절대 사용하지 마세요.\n{"brightness":정수(-50~50),"contrast":정수(-50~50),"saturation":정수(-50~50),"warmth":정수(-50~50),"sharpness":정수(0~100),"analysis":{"composition":"순수 한국어 설명","lighting":"순수 한국어 설명","background":"순수 한국어 설명","color":"순수 한국어 설명"}}`,
       }],
     })
     const text = completion.choices[0].message.content || ''
