@@ -1,6 +1,13 @@
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
+function stripNonKorean(obj: unknown): unknown {
+  if (typeof obj === 'string') return obj.replace(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u2E80-\u2EFF]/g, '')
+  if (Array.isArray(obj)) return obj.map(stripNonKorean)
+  if (obj && typeof obj === 'object') return Object.fromEntries(Object.entries(obj as Record<string, unknown>).map(([k, v]) => [k, stripNonKorean(v)]))
+  return obj
+}
+
 const groq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY || 'placeholder',
   baseURL: 'https://api.groq.com/openai/v1',
@@ -75,7 +82,7 @@ export async function POST(req: Request) {
       analysis: (raw?.analysis && typeof raw.analysis === 'object') ? { ...defaultAnalysis, ...raw.analysis } : defaultAnalysis,
     }
 
-    return NextResponse.json(result)
+    return NextResponse.json(stripNonKorean(result))
   } catch (error) {
     console.error('Analysis error:', error)
     return NextResponse.json({ brightness: 10, contrast: 5, saturation: 10, warmth: 5, sharpness: 30, analysis: { composition: '중앙 구도로 피사체를 배치했습니다', lighting: '자연광이 활용된 사진입니다', background: '배경이 깔끔하게 처리되었습니다', color: '자연스러운 색감의 사진입니다' } })

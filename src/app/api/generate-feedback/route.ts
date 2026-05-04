@@ -1,6 +1,13 @@
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
+function stripNonKorean(obj: unknown): unknown {
+  if (typeof obj === 'string') return obj.replace(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u2E80-\u2EFF]/g, '')
+  if (Array.isArray(obj)) return obj.map(stripNonKorean)
+  if (obj && typeof obj === 'object') return Object.fromEntries(Object.entries(obj as Record<string, unknown>).map(([k, v]) => [k, stripNonKorean(v)]))
+  return obj
+}
+
 export async function POST(req: Request) {
   const groq = new OpenAI({
     apiKey: process.env.GROQ_API_KEY || 'placeholder',
@@ -23,7 +30,7 @@ export async function POST(req: Request) {
       messages: [
         {
           role: 'system',
-          content: '당신은 전문 사진작가이자 사진 보정 전문가입니다. 반드시 순수한 한국어로만 작성하세요. 한자, 영어 단어를 절대 사용하지 마세요.',
+          content: '당신은 전문 사진작가이자 사진 보정 전문가입니다. 반드시 순수한 한국어로만 작성하세요. 한자(漢字)나 중국어 글자(예: 單, 美, 色 등)를 절대 사용하지 마세요. 영어 단어도 사용하지 마세요. 오직 한글과 숫자, 기본 문장부호만 사용하세요.',
         },
         {
           role: 'user',
@@ -63,7 +70,7 @@ AI 분석:
       m.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
     )
     const parsed = JSON.parse(fixed)
-    return NextResponse.json(parsed)
+    return NextResponse.json(stripNonKorean(parsed))
   } catch (error) {
     console.error('Groq error:', error)
     return NextResponse.json({
