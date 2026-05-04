@@ -124,7 +124,7 @@ export default function HomePage() {
       const groqRes = await fetch('/api/generate-feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose, corrections: corr, analysis: geminiData.analysis }),
+        body: JSON.stringify({ purpose, corrections: corr, analysis: geminiData.analysis, imageBase64, mimeType }),
       })
       const groqData: GroqFeedback = await groqRes.json()
       setFeedback(groqData)
