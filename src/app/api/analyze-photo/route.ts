@@ -33,6 +33,20 @@ async function fixHanja(text: string): Promise<string> {
   return completion.choices[0].message.content || text
 }
 
+function safeCorrections(raw: Record<string, unknown>) {
+  const n = (v: unknown, fallback: number) => {
+    const num = Number(v)
+    return isNaN(num) ? fallback : num
+  }
+  return {
+    brightness: Math.max(-25, Math.min(25, n(raw.brightness, 5))),
+    contrast:   Math.max(-25, Math.min(25, n(raw.contrast, 5))),
+    saturation: Math.max(-25, Math.min(25, n(raw.saturation, 5))),
+    warmth:     Math.max(-15, Math.min(15, n(raw.warmth, 0))),
+    sharpness:  Math.max(0,   Math.min(50, n(raw.sharpness, 20))),
+  }
+}
+
 async function analyzeWithVision(imageBase64: string, mimeType: string, purpose: string) {
   const models = ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview']
   for (const model of models) {
@@ -44,7 +58,7 @@ async function analyzeWithVision(imageBase64: string, mimeType: string, purpose:
           role: 'user',
           content: [
             { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
-            { type: 'text', text: `촬영 목적: ${purposeMap[purpose] || purpose}\n\n이 사진을 실제로 보고, 보이는 것만 설명하세요. 절대 가정하거나 상상하지 마세요.\n\n특히:\n- 배경의 실제 색상과 질감을 정확히 설명하세요 (예: 흰색 벽, 나무 테이블, 잔디, 콘크리트 등)\n- 조명의 방향과 광원을 실제로 보이는 대로 설명하세요\n- 색감은 사진에 실제로 보이는 색을 설명하세요\n\n반드시 순수한 한국어(한글)로만 작성하세요. 한자 절대 금지.\n\n다음 JSON만 반환:\n{"brightness":정수(-50~50),"contrast":정수(-50~50),"saturation":정수(-50~50),"warmth":정수(-50~50),"sharpness":정수(0~100),"analysis":{"composition":"실제로 보이는 구도 한 문장","lighting":"실제로 보이는 조명 한 문장","background":"실제로 보이는 배경 색상과 질감 한 문장","color":"실제로 보이는 색감 한 문장"}}` },
+            { type: 'text', text: `촬영 목적: ${purposeMap[purpose] || purpose}\n\n이 사진을 실제로 보고 보이는 것만 설명하세요. 절대 가정하거나 상상하지 마세요.\n\n특히:\n- 배경의 실제 색상과 질감을 정확히 설명하세요 (예: 흰색 벽, 나무 테이블, 잔디, 콘크리트 등)\n- 조명의 방향과 광원을 실제로 보이는 대로 설명하세요\n- 색감은 사진에 실제로 보이는 색을 설명하세요\n\n보정 수치는 자연스러운 결과를 위해 작은 값을 사용하세요. 수치가 너무 크면 이미지 품질이 저하됩니다.\n\n반드시 순수한 한국어(한글)로만 작성하세요. 한자 절대 금지.\n\n다음 JSON만 반환:\n{"brightness":정수(-25~25),"contrast":정수(-25~25),"saturation":정수(-25~25),"warmth":정수(-15~15),"sharpness":정수(0~50),"analysis":{"composition":"실제로 보이는 구도 한 문장","lighting":"실제로 보이는 조명 한 문장","background":"실제로 보이는 배경 색상과 질감 한 문장","color":"실제로 보이는 색감 한 문장"}}` },
           ],
         }],
       })
@@ -76,7 +90,7 @@ async function analyzeWithText(purpose: string) {
       response_format: { type: 'json_object' },
       messages: [{
         role: 'user',
-        content: `${purposeMap[purpose] || purpose} 촬영을 위한 일반적인 보정 수치와 사진 분석을 JSON으로 반환해주세요. 반드시 순수한 한국어(한글)로만 작성하세요. 한자(漢字)나 중국어 글자(예: 單, 美, 色 등)를 절대 사용하지 마세요.\n{"brightness":정수(-50~50),"contrast":정수(-50~50),"saturation":정수(-50~50),"warmth":정수(-50~50),"sharpness":정수(0~100),"analysis":{"composition":"순수 한국어 설명","lighting":"순수 한국어 설명","background":"순수 한국어 설명","color":"순수 한국어 설명"}}`,
+        content: `${purposeMap[purpose] || purpose} 촬영을 위한 자연스러운 보정 수치와 사진 분석을 JSON으로 반환해주세요. 수치가 너무 크면 이미지 품질이 저하되므로 작은 값을 사용하세요. 반드시 순수한 한국어(한글)로만 작성하세요. 한자 절대 금지.\n{"brightness":정수(-25~25),"contrast":정수(-25~25),"saturation":정수(-25~25),"warmth":정수(-15~15),"sharpness":정수(0~50),"analysis":{"composition":"한국어 설명","lighting":"한국어 설명","background":"한국어 설명","color":"한국어 설명"}}`,
       }],
     })
     let text = completion.choices[0].message.content || ''
@@ -101,14 +115,13 @@ export async function POST(req: Request) {
       ?? fallback
 
     const result = {
-      ...fallback,
-      ...raw,
+      ...safeCorrections(raw),
       analysis: (raw?.analysis && typeof raw.analysis === 'object') ? { ...defaultAnalysis, ...raw.analysis } : defaultAnalysis,
     }
 
     return NextResponse.json(result)
   } catch (error) {
     console.error('Analysis error:', error)
-    return NextResponse.json({ brightness: 10, contrast: 5, saturation: 10, warmth: 5, sharpness: 30, analysis: { composition: '중앙 구도로 피사체를 배치했습니다', lighting: '자연광이 활용된 사진입니다', background: '배경이 깔끔하게 처리되었습니다', color: '자연스러운 색감의 사진입니다' } })
+    return NextResponse.json({ brightness: 5, contrast: 5, saturation: 5, warmth: 0, sharpness: 20, analysis: { composition: '중앙 구도로 피사체를 배치했습니다', lighting: '자연광이 활용된 사진입니다', background: '배경이 깔끔하게 처리되었습니다', color: '자연스러운 색감의 사진입니다' } })
   }
 }
